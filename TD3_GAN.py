@@ -3,10 +3,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
 class Actor(nn.Module):
 	def __init__(self, state_dim, action_dim, max_action):
@@ -61,6 +62,25 @@ class Critic(nn.Module):
 		q1 = self.l3(q1)
 		return q1
 
+class Discriminator(nn.Module):
+	def __init__(self, state_dim, action_dim):
+		super(Discriminator, self).__init__()
+
+		self.l1 = nn.Linear(state_dim + action_dim, 256)
+		self.l2 = nn.Linear(256, 128)
+		self.l3 = nn.Linear(128, 64)
+		self.l4 = nn.Linear(64, 1)
+
+	def forward(self, state, action):
+		sa = torch.cat([state, action], 1)
+
+		validity = F.leaky_relu(self.l1(sa), negative_slope=0.2, inplace=True)
+		validity = F.leaky_relu(self.l2(validity), negative_slope=0.2, inplace=True)
+		validity = F.leaky_relu(self.l3(validity), negative_slope=0.2, inplace=True)
+		validity = F.sigmoid(self.l4(validity))
+
+		return validity
+
 
 class TD3_BC(object):
 	def __init__(
@@ -84,6 +104,10 @@ class TD3_BC(object):
 		self.critic_target = copy.deepcopy(self.critic)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
+		self.discriminator = Discriminator(state_dim, action_dim).to(device)
+		self.discriminator_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+		self.adversarial_loss = torch.nn.BCELoss()
+
 		self.max_action = max_action
 		self.discount = discount
 		self.tau = tau
@@ -104,12 +128,12 @@ class TD3_BC(object):
 		self.total_it += 1
 
 		# Sample replay buffer 
-		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+		state, demo_action, next_state, reward, not_done = replay_buffer.sample(batch_size)
 
 		with torch.no_grad():
 			# Select action according to policy and add clipped noise
 			noise = (
-				torch.randn_like(action) * self.policy_noise
+				torch.randn_like(demo_action) * self.policy_noise
 			).clamp(-self.noise_clip, self.noise_clip)
 			
 			next_action = (
@@ -121,8 +145,13 @@ class TD3_BC(object):
 			target_Q = torch.min(target_Q1, target_Q2)
 			target_Q = reward + not_done * self.discount * target_Q
 
+			# Select action for Discriminator training
+			policy_action = (
+				self.actor_target(state)
+			).clamp(-self.max_action, self.max_action)
+
 		# Get current Q estimates
-		current_Q1, current_Q2 = self.critic(state, action)
+		current_Q1, current_Q2 = self.critic(state, demo_action)
 
 		# Compute critic loss
 		critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
@@ -132,6 +161,20 @@ class TD3_BC(object):
 		critic_loss.backward()
 		self.critic_optimizer.step()
 
+		# GAN Phase
+
+		self.discriminator_optimizer.zero_grad()
+
+		valid = Variable(Tensor(batch_size, 1).fill_(1.0), requires_grad=False)
+		fake = Variable(Tensor(batch_size, 1).fill_(0.0), requires_grad=False)
+
+		real_loss = self.adversarial_loss(self.discriminator(state, demo_action), valid)
+		fake_loss = self.adversarial_loss(self.discriminator(state, policy_action), fake)
+		discriminator_loss = (real_loss + fake_loss) / 2
+
+		discriminator_loss.backward()
+		self.discriminator_optimizer.step()
+
 		# Delayed policy updates
 		if self.total_it % self.policy_freq == 0:
 
@@ -140,7 +183,11 @@ class TD3_BC(object):
 			Q = self.critic.Q1(state, pi)
 			lmbda = self.alpha/Q.abs().mean().detach()
 
-			actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, action) 
+			# TODO : Discriminator Loss
+			with torch.no_grad():
+				imitation_loss = self.discriminator(state, pi)
+			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, action)
+			actor_loss = -lmbda * Q.mean() + imitation_loss
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
