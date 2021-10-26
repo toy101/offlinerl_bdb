@@ -95,7 +95,7 @@ if __name__ == "__main__":
 	}
 
 	# Initialize policy
-	policy = TD3_GAN.TD3_BC(**kwargs)
+	policy = TD3_GAN.TD3_GAN(**kwargs)
 
 	if args.load_model != "":
 		policy_file = file_name if args.load_model == "default" else args.load_model

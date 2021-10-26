@@ -77,12 +77,12 @@ class Discriminator(nn.Module):
 		validity = F.leaky_relu(self.l1(sa), negative_slope=0.2, inplace=True)
 		validity = F.leaky_relu(self.l2(validity), negative_slope=0.2, inplace=True)
 		validity = F.leaky_relu(self.l3(validity), negative_slope=0.2, inplace=True)
-		validity = F.sigmoid(self.l4(validity))
+		validity = torch.sigmoid(self.l4(validity))
 
 		return validity
 
 
-class TD3_BC(object):
+class TD3_GAN(object):
 	def __init__(
 		self,
 		state_dim,
@@ -186,8 +186,8 @@ class TD3_BC(object):
 			# TODO : Discriminator Loss
 			with torch.no_grad():
 				imitation_loss = self.discriminator(state, pi)
-			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, action)
-			actor_loss = -lmbda * Q.mean() + imitation_loss
+			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, demo_action)
+			actor_loss = -lmbda * Q.mean() - imitation_loss.mean()
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
