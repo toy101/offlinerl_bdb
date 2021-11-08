@@ -159,22 +159,20 @@ class TD3_GAN(object):
 		critic_loss.backward()
 		self.critic_optimizer.step()
 
-		# GAN Phase
-
-		self.discriminator_optimizer.zero_grad()
-
-		valid = Variable(Tensor(batch_size, 1).fill_(1.0), requires_grad=False)
-		fake = Variable(Tensor(batch_size, 1).fill_(0.0), requires_grad=False)
-
-		real_loss = self.adversarial_loss(self.discriminator(state, demo_action), valid)
-		fake_loss = self.adversarial_loss(self.discriminator(state, policy_action), fake)
-		discriminator_loss = (real_loss + fake_loss) / 2
-
-		discriminator_loss.backward()
-		self.discriminator_optimizer.step()
-
 		# Delayed policy updates
 		if self.total_it % self.policy_freq == 0:
+
+			# GAN Phase
+			valid = Variable(Tensor(batch_size, 1).fill_(1.0), requires_grad=False)
+			fake = Variable(Tensor(batch_size, 1).fill_(0.0), requires_grad=False)
+
+			real_loss = self.adversarial_loss(self.discriminator(state, demo_action), valid)
+			fake_loss = self.adversarial_loss(self.discriminator(state, policy_action), fake)
+			discriminator_loss = (real_loss + fake_loss) / 2
+
+			self.discriminator_optimizer.zero_grad()
+			discriminator_loss.backward()
+			self.discriminator_optimizer.step()
 
 			# Compute actor loss
 			pi = self.actor(state)
