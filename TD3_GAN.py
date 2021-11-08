@@ -103,7 +103,7 @@ class TD3_GAN(object):
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
 		self.discriminator = Discriminator(state_dim, action_dim).to(device)
-		self.discriminator_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+		self.discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=3e-4)
 		self.adversarial_loss = torch.nn.BCELoss()
 
 		self.max_action = max_action
