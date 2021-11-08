@@ -66,18 +66,16 @@ class Discriminator(nn.Module):
 	def __init__(self, state_dim, action_dim):
 		super(Discriminator, self).__init__()
 
-		self.l1 = nn.Linear(state_dim + action_dim, 256)
-		self.l2 = nn.Linear(256, 128)
-		self.l3 = nn.Linear(128, 64)
-		self.l4 = nn.Linear(64, 1)
+		self.l1 = nn.Linear(state_dim + action_dim, 128)
+		self.l2 = nn.Linear(128, 128)
+		self.l3 = nn.Linear(128, 1)
 
 	def forward(self, state, action):
 		sa = torch.cat([state, action], 1)
 
-		validity = F.leaky_relu(self.l1(sa), negative_slope=0.2, inplace=True)
-		validity = F.leaky_relu(self.l2(validity), negative_slope=0.2, inplace=True)
-		validity = F.leaky_relu(self.l3(validity), negative_slope=0.2, inplace=True)
-		validity = torch.sigmoid(self.l4(validity))
+		validity = F.relu(self.l1(sa), negative_slope=0.2, inplace=True)
+		validity = F.relu(self.l2(validity), negative_slope=0.2, inplace=True)
+		validity = torch.sigmoid(self.l3(validity))
 
 		return validity
 
