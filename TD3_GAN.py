@@ -1,6 +1,10 @@
 import copy
+import collections
+from typing import Sequence
+
 import numpy as np
 import torch
+from torch._C import _last_executed_optimized_graph
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -8,6 +12,10 @@ from torch.autograd import Variable
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+
+def _mean_or_nan(xs: Sequence[float]) -> float:
+	"""Return its mean a non-empty sequence, numpy.nan for a empty one."""
+	return np.mean(xs) if xs else np.nan
 
 class Actor(nn.Module):
 	def __init__(self, state_dim, action_dim, max_action):
@@ -66,16 +74,19 @@ class Discriminator(nn.Module):
 	def __init__(self, state_dim, action_dim):
 		super(Discriminator, self).__init__()
 
-		self.l1 = nn.Linear(state_dim + action_dim, 128)
-		self.l2 = nn.Linear(128, 128)
-		self.l3 = nn.Linear(128, 1)
+		self.l1 = nn.Linear(state_dim + action_dim, 64)
+		self.l2 = nn.Linear(64, 64)
+		self.l3 = nn.Linear(64, 1)
 
 	def forward(self, state, action):
+		return torch.sigmoid(self.get_logits(state, action))
+
+	def get_logits(self, state, action):
 		sa = torch.cat([state, action], 1)
 
-		validity = F.relu(self.l1(sa), negative_slope=0.2, inplace=True)
-		validity = F.relu(self.l2(validity), negative_slope=0.2, inplace=True)
-		validity = torch.sigmoid(self.l3(validity))
+		validity = torch.tanh(self.l1(sa))
+		validity = torch.tanh(self.l2(validity))
+		validity = self.l3(validity)
 
 		return validity
 
@@ -92,6 +103,7 @@ class TD3_GAN(object):
 		noise_clip=0.5,
 		policy_freq=2,
 		alpha=2.5,
+		beta=0.5
 	):
 
 		self.actor = Actor(state_dim, action_dim, max_action).to(device)
@@ -103,8 +115,10 @@ class TD3_GAN(object):
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
 		self.discriminator = Discriminator(state_dim, action_dim).to(device)
+		self.discriminator_slow_update = copy.deepcopy(self.discriminator)
 		self.discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=3e-4)
-		self.adversarial_loss = torch.nn.BCELoss()
+		# self.adversarial_loss = torch.nn.BCELoss()
+		self.adversarial_loss = torch.nn.functional.binary_cross_entropy_with_logits
 
 		self.max_action = max_action
 		self.discount = discount
@@ -113,9 +127,17 @@ class TD3_GAN(object):
 		self.noise_clip = noise_clip
 		self.policy_freq = policy_freq
 		self.alpha = alpha
+		self.beta = beta
 
 		self.total_it = 0
 
+		# For logging
+		log_len = 2500
+		self.q_record: collections.deque = collections.deque(maxlen=log_len)
+		self.discrimnator_loss_record: collections.deque = collections.deque(maxlen=log_len)
+		self.actor_loss_record: collections.deque = collections.deque(maxlen=log_len)
+		self.imitation_loss_record: collections.deque = collections.deque(maxlen=log_len)
+		self.validity_record: collections.deque = collections.deque(maxlen=log_len)
 
 	def select_action(self, state):
 		state = torch.FloatTensor(state.reshape(1, -1)).to(device)
@@ -145,7 +167,7 @@ class TD3_GAN(object):
 
 			# Select action for Discriminator training
 			policy_action = (
-				self.actor_target(state)
+				self.actor(state)
 			).clamp(-self.max_action, self.max_action)
 
 		# Get current Q estimates
@@ -166,9 +188,13 @@ class TD3_GAN(object):
 			valid = Variable(Tensor(batch_size, 1).fill_(1.0), requires_grad=False)
 			fake = Variable(Tensor(batch_size, 1).fill_(0.0), requires_grad=False)
 
-			real_loss = self.adversarial_loss(self.discriminator(state, demo_action), valid)
-			fake_loss = self.adversarial_loss(self.discriminator(state, policy_action), fake)
-			discriminator_loss = (real_loss + fake_loss) / 2
+			real_loss = self.adversarial_loss(
+				self.discriminator.get_logits(state, demo_action), valid
+			)
+			fake_loss = self.adversarial_loss(
+				self.discriminator.get_logits(state, policy_action), fake
+			)
+			discriminator_loss = real_loss + fake_loss
 
 			self.discriminator_optimizer.zero_grad()
 			discriminator_loss.backward()
@@ -181,9 +207,11 @@ class TD3_GAN(object):
 
 			# TODO : Discriminator Loss
 			with torch.no_grad():
-				imitation_loss = self.discriminator(state, pi)
+				validity = self.discriminator(state, pi)
+			imitation_loss = -torch.log(validity.mean())
+			q_loss = -lmbda * Q.mean()
 			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, demo_action)
-			actor_loss = -lmbda * Q.mean() - imitation_loss.mean()
+			actor_loss = -lmbda * Q.mean() + self.beta*(-torch.log(validity.mean())) + (1 - self.beta)*F.mse_loss(pi, demo_action)
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
@@ -196,6 +224,18 @@ class TD3_GAN(object):
 
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+			# for param, target_param in zip(self.discriminator.parameters(), self.discriminator_slow_update.parameters()):
+			# 	target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+			# for target_param, param in zip(self.discriminator_slow_update.parameters(), self.discriminator.parameters()):
+			# 	param.data.copy_(target_param.data)
+
+			self.q_record.extend(Q.mean().detach().cpu().numpy().ravel())
+			self.discrimnator_loss_record.extend(discriminator_loss.detach().cpu().numpy().ravel())
+			self.actor_loss_record.extend(actor_loss.detach().cpu().numpy().ravel())
+			self.imitation_loss_record.extend(imitation_loss.detach().cpu().numpy().ravel())
+			self.validity_record.extend(validity.mean().detach().cpu().numpy().ravel())
 
 
 	def save(self, filename):
@@ -214,3 +254,13 @@ class TD3_GAN(object):
 		self.actor.load_state_dict(torch.load(filename + "_actor"))
 		self.actor_optimizer.load_state_dict(torch.load(filename + "_actor_optimizer"))
 		self.actor_target = copy.deepcopy(self.actor)
+
+	def get_log(self):
+		
+		return [
+			("average_q", _mean_or_nan(self.q_record)),
+			("average_disc_loss", _mean_or_nan(self.discrimnator_loss_record)),
+			("average_actor_loss", _mean_or_nan(self.actor_loss_record)),
+			("average_imi_loss", _mean_or_nan(self.imitation_loss_record)),
+			("average_valid", _mean_or_nan(self.validity_record))
+		]

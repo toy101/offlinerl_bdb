@@ -29,6 +29,7 @@ def eval_policy(policy, env_name, seed, mean, std, seed_offset=100, eval_episode
 
 	print("---------------------------------------")
 	print(f"Evaluation over {eval_episodes} episodes: {d4rl_score:.3f}")
+	print(policy.get_log())
 	print("---------------------------------------")
 	return d4rl_score
 
@@ -54,10 +55,11 @@ if __name__ == "__main__":
 	parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
 	# TD3 + BC
 	parser.add_argument("--alpha", default=2.5)
+	parser.add_argument("--beta", default=0.5)
 	parser.add_argument("--normalize", default=True)
 	args = parser.parse_args()
 
-	file_name = f"{args.policy}_{args.env}_{args.seed}"
+	file_name = f"beta={args.beta}/{args.policy}_{args.env}_{args.seed}"
 	print("---------------------------------------")
 	print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
 	print("---------------------------------------")
@@ -91,7 +93,8 @@ if __name__ == "__main__":
 		"noise_clip": args.noise_clip * max_action,
 		"policy_freq": args.policy_freq,
 		# TD3 + BC
-		"alpha": args.alpha
+		"alpha": args.alpha,
+		"beta" : args.beta
 	}
 
 	# Initialize policy
