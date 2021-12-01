@@ -285,3 +285,6 @@ cython_debug/
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,macos,pycharm+all
 
 results/
+.vscode/
+*json
+*_copy*
