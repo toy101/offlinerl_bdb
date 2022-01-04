@@ -211,7 +211,7 @@ class TD3_GAN(object):
 			imitation_loss = -torch.log(validity.mean())
 			q_loss = -lmbda * Q.mean()
 			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, demo_action)
-			actor_loss = -lmbda * Q.mean() + self.beta*(-torch.log(validity.mean())) + (1 - self.beta)*F.mse_loss(pi, demo_action)
+			actor_loss = -lmbda * Q.mean() + self.beta*(-torch.log(validity.mean())) + (1.0 - self.beta)*F.mse_loss(pi, demo_action)
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
