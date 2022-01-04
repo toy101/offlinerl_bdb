@@ -59,7 +59,8 @@ if __name__ == "__main__":
 	parser.add_argument("--normalize", default=True)
 	args = parser.parse_args()
 
-	file_name = f"beta={args.beta}/{args.policy}_{args.env}_{args.seed}"
+	# file_name = f"beta={args.beta}/{args.policy}_{args.env}_{args.seed}"
+	file_name = f"beta=unc/{args.policy}_{args.env}_{args.seed}"
 	print("---------------------------------------")
 	print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
 	print("---------------------------------------")

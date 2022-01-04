@@ -211,7 +211,20 @@ class TD3_GAN(object):
 			imitation_loss = -torch.log(validity.mean())
 			q_loss = -lmbda * Q.mean()
 			# actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, demo_action)
-			actor_loss = -lmbda * Q.mean() + self.beta*(-torch.log(validity.mean())) + (1.0 - self.beta)*F.mse_loss(pi, demo_action)
+
+			# Calculating Uncertainty
+
+			# state_rep = next_state.unsqueeze(1).repeat(1, 10, 1).view(next_state.shape[0] * 10, next_state.shape[1])
+			# action_rep = self.actor(state_rep)
+			# target_Q1_rep, target_Q2_rep = self.critic_target(state_rep, action_rep)
+			# beta_1 = torch.min(target_Q1, target_Q2)
+			# beta_2 = torch.max(target_Q1, target_Q2)
+
+			unc = torch.max(target_Q1, target_Q2) - torch.min(target_Q1, target_Q2)
+			# unc_max = unc.max()
+			beta =  min(1., 1/unc.max())
+
+			actor_loss = -lmbda * Q.mean() + beta*(-torch.log(validity.mean())) + (1.0 - beta)*F.mse_loss(pi, demo_action)
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
