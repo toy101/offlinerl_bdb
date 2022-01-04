@@ -225,6 +225,10 @@ class TD3_GAN(object):
             actor_loss = -lmbda * Q.mean() + beta * (-torch.log(validity.mean())) \
                          + (1.0 - beta) * F.mse_loss(pi, demo_action)
 
+            # beta = torch.min(Tensor([1.]), torch.exp(unc + 1))
+            # actor_loss = -lmbda * Q.mean() + (1.0 - beta) * (-torch.log(validity.mean())) \
+            #              + beta * F.mse_loss(pi, demo_action)
+
             # Optimize the actor
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
