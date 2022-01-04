@@ -138,6 +138,7 @@ class TD3_GAN(object):
 		self.actor_loss_record: collections.deque = collections.deque(maxlen=log_len)
 		self.imitation_loss_record: collections.deque = collections.deque(maxlen=log_len)
 		self.validity_record: collections.deque = collections.deque(maxlen=log_len)
+		self.beta_record: collections.deque = collections.deque(maxlen=log_len)
 
 	def select_action(self, state):
 		state = torch.FloatTensor(state.reshape(1, -1)).to(device)
@@ -222,7 +223,7 @@ class TD3_GAN(object):
 
 			unc = torch.max(target_Q1, target_Q2) - torch.min(target_Q1, target_Q2)
 			# unc_max = unc.max()
-			beta =  min(1., 1/unc.max())
+			beta =  torch.min(Tensor([1.0]), 1/unc.max())
 
 			actor_loss = -lmbda * Q.mean() + beta*(-torch.log(validity.mean())) + (1.0 - beta)*F.mse_loss(pi, demo_action)
 			
@@ -249,7 +250,7 @@ class TD3_GAN(object):
 			self.actor_loss_record.extend(actor_loss.detach().cpu().numpy().ravel())
 			self.imitation_loss_record.extend(imitation_loss.detach().cpu().numpy().ravel())
 			self.validity_record.extend(validity.mean().detach().cpu().numpy().ravel())
-
+			self.beta_record.extend(beta.mean().detach().cpu().numpy().ravel())
 
 	def save(self, filename):
 		torch.save(self.critic.state_dict(), filename + "_critic")
@@ -275,5 +276,6 @@ class TD3_GAN(object):
 			("average_disc_loss", _mean_or_nan(self.discrimnator_loss_record)),
 			("average_actor_loss", _mean_or_nan(self.actor_loss_record)),
 			("average_imi_loss", _mean_or_nan(self.imitation_loss_record)),
-			("average_valid", _mean_or_nan(self.validity_record))
+			("average_valid", _mean_or_nan(self.validity_record)),
+			("average_beta", _mean_or_nan(self.beta_record))
 		]
