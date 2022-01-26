@@ -114,7 +114,6 @@ class TD3_GAN(object):
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
 		self.discriminator = Discriminator(state_dim, action_dim).to(device)
-		self.discriminator_slow_update = copy.deepcopy(self.discriminator)
 		self.discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=3e-4)
 		# self.adversarial_loss = torch.nn.BCELoss()
 		self.adversarial_loss = torch.nn.functional.binary_cross_entropy_with_logits
@@ -227,12 +226,6 @@ class TD3_GAN(object):
 
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
-			# for param, target_param in zip(self.discriminator.parameters(), self.discriminator_slow_update.parameters()):
-			# 	target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-
-			# for target_param, param in zip(self.discriminator_slow_update.parameters(), self.discriminator.parameters()):
-			# 	param.data.copy_(target_param.data)
 
 			self.q_record.extend(Q.mean().detach().cpu().numpy().ravel())
 			self.discrimnator_loss_record.extend(discriminator_loss.detach().cpu().numpy().ravel())
