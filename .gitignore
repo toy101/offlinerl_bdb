@@ -288,3 +288,4 @@ results/
 .vscode/
 *json
 *_copy*
+*.png
