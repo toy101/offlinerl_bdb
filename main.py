@@ -59,14 +59,15 @@ if __name__ == "__main__":
     parser.add_argument("--normalize", default=True)
     args = parser.parse_args()
 
-    # file_name = f"beta={args.beta}/{args.policy}_{args.env}_{args.seed}"
-    file_name = f"beta=unc/{args.policy}_{args.env}_{args.seed}"
+    # file_name = f"beta=unc/{args.policy}_{args.env}_{args.seed}"
+    root_path = "./results/beta=unc"
+    file_name = f"/{args.policy}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
 
-    if not os.path.exists("./results"):
-        os.makedirs("./results")
+    if not os.path.exists(root_path):
+        os.makedirs(root_path)
 
     if args.save_model and not os.path.exists("./models"):
         os.makedirs("./models")
@@ -119,5 +120,5 @@ if __name__ == "__main__":
         if (t + 1) % args.eval_freq == 0:
             print(f"Time steps: {t + 1}")
             evaluations.append(eval_policy(policy, args.env, args.seed, mean, std))
-            np.save(f"./results/{file_name}", evaluations)
+            np.save(root_path+file_name, evaluations)
             if args.save_model: policy.save(f"./models/{file_name}")
