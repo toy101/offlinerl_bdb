@@ -1,3 +1,5 @@
+import  datetime
+
 import numpy as np
 import torch
 import gym
@@ -114,11 +116,14 @@ if __name__ == "__main__":
         mean, std = 0, 1
 
     evaluations = []
+    start_time = datetime.datetime.now()
     for t in range(int(args.max_timesteps)):
         policy.train(replay_buffer, args.batch_size)
         # Evaluate episode
-        if (t + 1) % args.eval_freq == 0:
-            print(f"Time steps: {t + 1}")
-            evaluations.append(eval_policy(policy, args.env, args.seed, mean, std))
-            np.save(root_path+file_name, evaluations)
-            if args.save_model: policy.save(f"./models/{file_name}")
+        # if (t + 1) % args.eval_freq == 0:
+        #     print(f"Time steps: {t + 1}")
+        #     evaluations.append(eval_policy(policy, args.env, args.seed, mean, std))
+        #     np.save(root_path+file_name, evaluations)
+        #     if args.save_model: policy.save(f"./models/{file_name}")
+    end_time = datetime.datetime.now()
+    print(f"Elapsed time : {end_time-start_time}")
